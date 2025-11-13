@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Noise Generator</title>
+    <script src="https://cdn.jsdelivr.net/gh/innovation-adelphiu/info-button@main/info-button.js"></script>
+
+    <style>
+    body
+    {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.33;
+        background-color: #EEEEFF;
+        color: #000022;
+        padding: 8px;
+        font-size: 16px;
+    }
+
+    .row { display: flex; gap: 16px; }
+    .column { display: flex; flex-direction: column; }
+    .header { margin: 10px 0 20px 0; font-size: 2.0em; font-weight: 700;}
+    .subheader { margin: 10px 0 10px 0; font-size: 1.5em; font-weight: 500;}
+    .group { display: flex; flex-direction: column; gap: 10px; }
+    label { cursor: pointer; }
+
+    input[type="radio"] { cursor: pointer; transform: scale(1.5); margin: 6px; }
+    #volumeSlider { width: 337px; }
+    </style>
+</head>
+<body>
+  <div class="header">White Noise Generator</div>
+ 
+  <div class="column">
+    <div class="subheader">Noise Type:</div>
+    <div class="group">
+      <label><input type="radio" name="noise" id="none-noise" checked> None </label>
+      <label><input type="radio" name="noise" id="white-noise"> <b>White</b>:  a uniform sound containing all frequencies at equal levels</label>
+      <label><input type="radio" name="noise" id="pink-noise"> <b>Pink</b>: a smooth balanced sound with reduced high-frequency hiss</label>
+      <label><input type="radio" name="noise" id="brown-noise"> <b>Brown</b>: a deep rumbling sound emphasizing low frequencies</label>
+    </div>
+  </div>
+
+  <br>
+
+  <div class="row">
+    <label for="volumeSlider"><div class="subheader">Volume:</div></label>
+    <input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.30">
+    <div id="volumeDisplay" class="subheader">0.30</div>
+  </div>
+
+<script>
+function initNoiseGenerator()
+{
+    let audioContext, gainNode, workletNode, currentType = 'none';
+
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeDisplay = document.getElementById('volumeDisplay');
+
+    async function ensureAudio() 
+    {
+        if (audioContext) 
+            return;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        await audioContext.audioWorklet.addModule('noise-processor.js');
+        gainNode = audioContext.createGain(); // volume control
+        gainNode.gain.value = parseFloat(volumeSlider.value);
+        workletNode = new AudioWorkletNode(audioContext, 'noise-processor', { 
+            numberOfInputs: 0, // 0 since procedurally generated. multiple inputs often used for mixers.
+            numberOfOutputs: 1, // could send to multiple output devices (e.g. speakers for specific audio rangers, like sub-woofers)
+            outputChannelCount: [1] // array length = numOutputs; each entry = 1 (mono) or 2 (stereo)
+        });
+        workletNode.connect(gainNode).connect(audioContext.destination);
+    }
+
+    function setType(type) 
+    {
+        currentType = type;
+        workletNode.port.postMessage({ "type": type });
+        if (type === 'none')
+            gainNode.gain.setTargetAtTime(0, audioContext.currentTime, 0.05);
+        else
+            gainNode.gain.setTargetAtTime(parseFloat(volumeSlider.value), audioContext.currentTime, 0.05);
+    }
+
+    async function changeNoiseType(type)
+    {
+        await ensureAudio();
+        if (audioContext.state === 'suspended') 
+            await audioContext.resume();
+        setType(type);
+    }
+
+    document.getElementById( 'none-noise').addEventListener('change', function() {changeNoiseType("none")} );
+    document.getElementById('white-noise').addEventListener('change', function() {changeNoiseType("white")} );
+    document.getElementById( 'pink-noise').addEventListener('change', function() {changeNoiseType("pink")} );
+    document.getElementById('brown-noise').addEventListener('change', function() {changeNoiseType("brown")} );
+    
+    function setVolume()
+    {
+        const volume = parseFloat(volumeSlider.value);
+        volumeDisplay.textContent = volume.toFixed(2);
+        if (audioContext && currentType !== 'none') 
+            gainNode.gain.setTargetAtTime(volume, audioContext.currentTime, 0.01);
+    }
+
+    volumeSlider.addEventListener('input', setVolume);
+}
+
+initNoiseGenerator();
+
+</script>
+</body>
+</html>
